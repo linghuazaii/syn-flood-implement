@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS=-O3 -g
 
-SRC=./main.o ./utility.o
+SRC=./main.o ./utility.o ./syn.o
 TARGET=syn-flood
 
 .PHONY: all

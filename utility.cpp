@@ -4,6 +4,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <inttypes.h>
+#include <ifaddrs.h>
+#include <netdb.h>
 #include "globals.h"
 
 int check_root_privilege() {
@@ -124,6 +126,21 @@ int stun_get_public_ip_imp(const char *server, unsigned short remote_port, unsig
     return 0;
 }
 
+int stun_get_public_ip(const char *server, unsigned short remote_port, unsigned short local_port, char *public_ip) {
+    vector<string> ips;
+    if (is_valid_ip(server)) {
+        return stun_get_public_ip_imp(server, remote_port, local_port, public_ip);
+    } else {
+        int rc = resolve_fqdn_to_ip(server, ips);
+        if (rc != 0) {
+            SF_SYSLOG("resolve dns for %s failed.", server);
+            return -1;
+        }
+
+        return stun_get_public_ip_imp(ips[0].c_str(), remote_port, local_port, public_ip);
+    }
+}
+
 int dig_get_public_ip(char *public_ip, int len) {
     const char *dig_cmd = "dig +short myip.opendns.com @resolver1.opendns.com";
     FILE *cmd_fp = popen(dig_cmd, "r");
@@ -144,3 +161,187 @@ int dig_get_public_ip(char *public_ip, int len) {
     pclose(cmd_fp);
     return 0;
 }
+
+/**
+ * get ip address the router choosed
+ */
+char *get_primary_ip(char *ip, size_t len) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (unlikely(sock == -1)) {
+        SF_SYSLOG("create socket failed (%s)", strerror(errno));
+        return NULL;
+    }
+
+    /**
+     * use google dns for test, we don't need to send any packet, the router will determine
+     * which interface to use.
+     */
+    const char *google_dns = "8.8.8.8";
+    uint16_t dns_port = 53;
+    struct sockaddr_in serv;
+    memset(&serv, 0, sizeof(serv));
+    serv.sin_family = AF_INET;
+    serv.sin_addr.s_addr = inet_addr(google_dns);
+    serv.sin_port = htons(dns_port);
+
+    int rc = connect(sock, (struct sockaddr *)&serv, sizeof(serv));
+    if (unlikely(rc == -1)) {
+        SF_SYSLOG("UDP connect failed (%s)", strerror(errno));
+        return NULL;
+    }
+
+    sockaddr_in name;
+    socklen_t name_len = sizeof(name);
+    rc = getsockname(sock, (struct sockaddr *)&name, &name_len);
+    if (unlikely(rc == -1)) {
+        SF_SYSLOG("getsockname() failed (%s)", strerror(errno));
+        return NULL;
+    }
+
+    const char *p = inet_ntop(AF_INET, &name.sin_addr, ip, len);
+    if (unlikely(p == NULL)) {
+        SF_SYSLOG("inet_ntop() failed (%s)", strerror(errno));
+        return NULL;
+    }
+
+    return ip;
+}
+
+/**
+ * get ip address of specified ethernet.
+ */
+char *get_ethernet_ip(const char *ethernet, char *ip, size_t len) {
+    struct ifaddrs *ips, *iter;
+    int rc = getifaddrs(&ips);
+    if (unlikely(rc == -1)) {
+        SF_SYSLOG("getifaddrs() failed (%s)", strerror(errno));
+        freeifaddrs(ips);
+        return NULL;
+    }
+
+    for (iter = ips; iter != NULL; iter = ips->ifa_next) {
+        if (strcasecmp(ethernet, iter->ifa_name) == 0 && iter->ifa_addr->sa_family == AF_INET) {
+            sockaddr_in *local_ip = (sockaddr_in *)iter->ifa_addr;
+            const char *p = inet_ntop(AF_INET, &local_ip->sin_addr, ip, len);
+            if (unlikely(p == NULL)) {
+                SF_SYSLOG("inet_ntop() failed (%s)", strerror(errno));
+                freeifaddrs(ips);
+                return NULL;
+            }
+
+            freeifaddrs(ips);
+            return ip;
+        }
+    }
+
+    freeifaddrs(ips);
+    return NULL;
+}
+
+/**
+ * get ip address of specified ethernet.
+ */
+char *get_ethname_by_ip(const char *ip, char *ethname, size_t len) {
+    struct ifaddrs *ips, *iter;
+    int rc = getifaddrs(&ips);
+    if (unlikely(rc == -1)) {
+        SF_SYSLOG("getifaddrs() failed (%s)", strerror(errno));
+        freeifaddrs(ips);
+        return NULL;
+    }
+
+    char temp_ip[INET_ADDRSTRLEN];
+    for (iter = ips; iter != NULL; iter = iter->ifa_next) {
+        if (iter->ifa_addr->sa_family == AF_INET) {
+            sockaddr_in *local_ip = (sockaddr_in *)iter->ifa_addr;
+            const char *p = inet_ntop(AF_INET, &local_ip->sin_addr, temp_ip, INET_ADDRSTRLEN);
+            if (unlikely(p == NULL)) {
+                SF_SYSLOG("inet_ntop() failed (%s)", strerror(errno));
+                freeifaddrs(ips);
+                return NULL;
+            } else {
+                if (strcmp(ip, p) != 0)
+                    continue;
+                else
+                    strncpy(ethname, iter->ifa_name, len);
+            }
+
+            freeifaddrs(ips);
+            return ethname;
+        }
+    }
+
+    freeifaddrs(ips);
+    return NULL;
+}
+
+/*
+ * Resolve fqdn to ip address
+ * Note: Now we only resolve ipv4 address, if you need to use ipv6,
+ *       modify this function. We only use one IP even though resolving
+ *       dns gives us AN IP LIST.
+ */
+int resolve_fqdn_to_ip(const char *fqdn, vector<string> &ips) {
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    int rc = getaddrinfo(fqdn, NULL, &hints, &res);
+    if (unlikely(rc != 0)) {
+        SF_SYSLOG("getaddrinfo() failed, host(%s) msg(%s)", fqdn, gai_strerror(rc));
+        return -1;
+    }
+
+    struct sockaddr_in *addr;
+    char ip[INET_ADDRSTRLEN];
+    for (; res != NULL; res = res->ai_next) {
+        addr = (struct sockaddr_in *)res->ai_addr;
+        inet_ntop(AF_INET, &addr->sin_addr, ip, INET_ADDRSTRLEN);
+        ips.push_back(ip);
+    }
+
+    return 0;
+}
+
+/*
+ * determine whether an IP is valid or not
+ */
+bool is_valid_ip(const char *host) {
+    struct sockaddr_in ipv4;
+    struct sockaddr_in6 ipv6;
+
+    const char *mark = strchr(host, ':');
+    if (mark != NULL) {
+        /* ipv6 */
+        int rc = inet_pton(AF_INET6, host, &(ipv6.sin6_addr));
+        return rc;
+    } else {
+        /* ipv4 */
+        int rc = inet_pton(AF_INET, host, &(ipv4.sin_addr));
+        return rc;
+    }
+}
+
+/*
+ * Test 
+ */
+#if 0
+global_config_t g_config;
+int main(int argc, char **argv) {
+    /*
+    vector<string> ip;
+    resolve_fqdn_to_ip(argv[1], ip);
+    for (int i = 0; i < ip.size(); ++i)
+        cout<<"ip: "<<ip[i]<<endl;
+    */
+
+    char ethname[32];
+    get_ethname_by_ip("127.0.0.1", ethname, 32);
+    cout<<"ethname: "<<ethname<<endl;
+    get_ethname_by_ip("172.31.43.244", ethname, 32);
+    cout<<"ethname: "<<ethname<<endl;
+
+    return 0;
+}
+#endif

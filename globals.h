@@ -13,13 +13,15 @@ typedef struct global_config_tag {
     int verbose;
     char output_file[FILENAME_LEN];
     char host[HOST_LEN];
-    int port;
+    int remote_port;
+    int local_port;
     char stun_server[HOST_LEN];
     int stun_server_port;
     int stun_local_port;
     int ttl;
     int tos;
     char eth[ETH_LEN];
+    int packets;
 } global_config_t;
 
 extern global_config_t g_config;
