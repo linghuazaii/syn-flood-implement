@@ -186,7 +186,7 @@ int main(int argc, char **argv) {
     }
     process_args(argc, argv, g_config);
 
-    rc = syn_flood();
+    int rc = syn_flood();
     if (rc < 0) {
         SF_SYSLOG("SYN FLOOOOOOOOOOOOOOOOD FAILED!!!");
         exit(EXIT_FAILURE);
