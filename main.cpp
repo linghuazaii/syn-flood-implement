@@ -7,6 +7,7 @@
 #include "argp.h"
 #include "globals.h"
 #include "syn.h"
+#include <pthread.h>
 
 void process_args(int argc, char **argv, global_config_t &config) {
     extern struct argp argp;
@@ -156,6 +157,28 @@ const char *stun_server_list = "stun.l.google.com:19305\n"
                                "stun.voxgratia.org\n"
                                "stun.xten.com";
 
+#if 0
+void *dran_packets(void *param) {
+    global_config_t *config = (global_config_t *)param;
+
+    char ip[INET_ADDRSTRLEN];
+    if (strlen(config->eth) == 0)
+        get_primary_ip(ip, INET_ADDRSTRLEN);
+    else
+        get_ethernet_ip(config->eth, ip, INET_ADDRSTRLEN);
+
+    struct sockaddr_in drain_addr;
+    memset(&dran_addr, 0, sizeof(drain_addr));
+    drain_addr.sin_family = AF_INET;
+    uint16_t local_port = 9765;
+    if (config->local_port != 0)
+        local_port = (uint16_t)config->local_port;
+    drain_addr.sin_port = htons(local_port);
+
+    return NULL;
+}
+#endif
+
 int main(int argc, char **argv) {
     if (check_root_privilege() != 0) {
         SYSLOG("you must have super user privilege to run this program.");
@@ -163,10 +186,14 @@ int main(int argc, char **argv) {
     }
     process_args(argc, argv, g_config);
 
-    int rc = syn_flood();
+    rc = syn_flood();
     if (rc < 0) {
         SF_SYSLOG("SYN FLOOOOOOOOOOOOOOOOD FAILED!!!");
         exit(EXIT_FAILURE);
+    }
+
+    while (true) {
+        sleep(86400);
     }
 
     return 0;

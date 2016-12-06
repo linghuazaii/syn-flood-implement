@@ -1,5 +1,6 @@
 CC=g++
-CFLAGS=-O3 -g
+#CFLAGS=-O3 -g
+CFLAGS=-g
 
 SRC=./main.o ./utility.o ./syn.o
 TARGET=syn-flood

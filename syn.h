@@ -27,7 +27,7 @@ int check_syn_config(global_config_t &config);
 int init_syn_packet(syn_header_t &syn_header, global_config_t &config);
 uint16_t checksum (uint16_t *addr, int len);
 uint16_t tcp4_checksum (struct ip &iphdr, struct tcphdr &tcphdr);
-int send_syn_packet(int syn_socket, syn_header_t &syn_header, const char *eth);
+int send_syn_packet(int syn_socket, syn_header_t &syn_header);
 int syn_flood();
 
 #endif

