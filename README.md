@@ -7,6 +7,7 @@ A problem is happened, which may stop me for some time to bring this theorem to 
 <br>
 **Update:**<br>
 This bug is fixed, `kernel` seems to have protection for `SYN FLOOD`, and `backlog` for every `socket descriptor` seems to increase dynamicly. But that's alright, every `half-open` connection will consume `kernel` resources, now imagin we have a `CLUSTER` to flood the target at the same time. HAHAHA...<br>
+Wait! `kernel` seems to sustain a limit number of `half-open` connections, good job! `kernel`~<br>
 <img src="https://github.com/linghuazaii/blog/blob/master/image/syn-flood/half-connection.png"><br>
 
 ## Usage
