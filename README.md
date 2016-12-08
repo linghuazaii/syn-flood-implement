@@ -3,7 +3,7 @@ SYN FLOOD IMPLEMENT
 This is a simple example using `raw socket` to send `SYN` packet to remote server, and the intent is to consume **backlog of the listen queue** to cause remote server delying services on specified port theoretically.<br>
 A problem is happened, which may stop me for some time to bring this theorem to practice. The problem is described below:<br>
 <img src="https://github.com/linghuazaii/blog/blob/master/image/syn-flood/syn-packet.png"><br>
-`client` send a `SYN` to `server`, and `server` responsed with correct `ACK Number`, I have read TCP RFC, the problem seems to be that, `kernel` didn't realize TCP RFC the strict way. You can track this question in [SO](http://stackoverflow.com/questions/40986978/create-half-open-tcp-connection-failed) for latest updates on this problem.<br>
+`client` send a `SYN` to `server`, and `server` responsed with correct `ACK Number`, I have read TCP RFC, the problem seems to be that, `kernel` didn't implement TCP RFC the strict way. You can track this question in [SO](http://stackoverflow.com/questions/40986978/create-half-open-tcp-connection-failed) for latest updates on this problem.<br>
 <br>
 **Update:**<br>
 This bug is fixed, `kernel` seems to have protection for `SYN FLOOD`, and `backlog` for every `socket descriptor` seems to increase dynamicly. But that's alright, every `half-open` connection will consume `kernel` resources, now imagin we have a `CLUSTER` to flood the target at the same time. HAHAHA...<br>
