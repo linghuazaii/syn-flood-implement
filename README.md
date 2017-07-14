@@ -1,5 +1,9 @@
 SYN FLOOD IMPLEMENT
 ===================
+## Note
+This implementation won't cause SYN flood for \*nix systems. 
+
+### Description
 This is a simple example using `raw socket` to send `SYN` packet to remote server, and the intent is to consume **backlog of the listen queue** to cause remote server delying services on specified port theoretically.<br>
 A problem is happened, which may stop me for some time to bring this theorem to practice. The problem is described below:<br>
 <img src="https://github.com/linghuazaii/blog/blob/master/image/syn-flood/syn-packet.png"><br>
