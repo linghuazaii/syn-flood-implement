@@ -1,4 +1,4 @@
-SYN FLOOD IMPLEMENT
+SYN FLOOD IMPLEMENT[Deprecated]
 ===================
 ## Note
 This implementation won't cause SYN flood for \*nix systems. 
